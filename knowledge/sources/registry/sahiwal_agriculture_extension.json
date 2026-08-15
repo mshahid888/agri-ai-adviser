@@ -1,0 +1,20 @@
+{
+  "source_id": "sahiwal-agriculture-extension",
+  "title": "Sahiwal Agriculture Extension",
+  "organization": "Agriculture Extension Department, Sahiwal",
+  "source_type": "official_extension",
+  "official_url": "https://agriculture.punjab.gov.pk/",
+  "url_status": "verified",
+  "document_path": "",
+  "crop": "",
+  "region": "Punjab",
+  "province": "Punjab",
+  "district": "Sahiwal",
+  "topic": "",
+  "publication_date": "",
+  "last_updated": "",
+  "version": "",
+  "evidence_quality": "general",
+  "status": "registered",
+  "notes": "Registered official source. District-level extension material for Sahiwal is pending ingestion."
+}

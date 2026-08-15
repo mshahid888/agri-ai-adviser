@@ -1,0 +1,20 @@
+{
+  "source_id": "potato-research-institute-sahiwal",
+  "title": "Potato Research Institute, Sahiwal",
+  "organization": "Potato Research Institute, Sahiwal (Punjab agricultural research system)",
+  "source_type": "official_research_institute",
+  "official_url": "https://aari.punjab.gov.pk/",
+  "url_status": "verified",
+  "document_path": "",
+  "crop": "potato",
+  "region": "Punjab",
+  "province": "Punjab",
+  "district": "Sahiwal",
+  "topic": "crop_research",
+  "publication_date": "",
+  "last_updated": "",
+  "version": "",
+  "evidence_quality": "general",
+  "status": "registered",
+  "notes": "Registered official source. Parent research-system domain verified; institute-specific page pending verification. Potato research material pending ingestion."
+}

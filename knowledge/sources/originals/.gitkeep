@@ -1,0 +1,8 @@
+# Original official PDFs and publications are stored in this directory.
+
+# This directory is intentionally kept out of the knowledge retrieval path:
+# the existing loader only scans .md and .txt files, so PDFs placed here are
+# never loaded as knowledge documents.
+
+# PDF ingestion/parsing is a future milestone. For now this directory is a
+# placeholder to reserve the storage location for original official material.
