@@ -168,3 +168,44 @@ def validate_source_record(record: SourceRecord) -> list[str]:
         issues.append(f"Unknown status: {record.status}")
 
     return issues
+
+
+def register_document_path(source_id: str, document_path: str) -> str:
+    """Register an original document path for a source record.
+
+    This is an additive helper used by the M10 ingestion pipeline to link an
+    ingested PDF to its source registry record.
+
+    It will NOT silently overwrite an existing ``document_path``. If the source
+    already has a ``document_path`` set, a ``ValueError`` is raised so the
+    caller can handle the conflict explicitly and safely.
+
+    The change is persisted to the source's registry JSON file.
+
+    Returns the registered ``document_path`` on success.
+    """
+    if not document_path:
+        raise ValueError("document_path must not be empty")
+
+    record = get_source(source_id)
+    if record is None:
+        raise ValueError(f"Unknown source_id: {source_id}")
+
+    if record.document_path:
+        raise ValueError(
+            f"Source '{source_id}' already has a document_path "
+            f"('{record.document_path}'); refusing to overwrite it."
+        )
+
+    # Persist the change to the source's registry JSON file.
+    filename = source_id.replace("-", "_") + ".json"
+    path = REGISTRY_DIR / filename
+    if not path.exists():
+        raise ValueError(f"Registry file not found for source_id: {source_id}")
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["document_path"] = document_path
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    record.document_path = document_path
+    return record.document_path
