@@ -1,4 +1,13 @@
-﻿# Wheat — General Agricultural Knowledge
+﻿---
+title: Wheat
+crop: wheat
+region: Pakistan
+topic: crop_management
+source_type: agricultural_guidance
+evidence_quality: moderate
+---
+
+# Wheat — General Agricultural Knowledge
 ## Crop
 Wheat is a Rabi-season cereal crop.
 ## Rice-Wheat Rotation

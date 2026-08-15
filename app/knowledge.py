@@ -28,11 +28,56 @@ class ClaimType(str, Enum):
     OTHER = "other"
 
 
+def parse_front_matter(content: str) -> tuple[dict[str, str], str]:
+    """Parse simple YAML-style front matter from markdown content.
+
+    Returns a (metadata, body) tuple. If no front matter is found, the full input is
+    returned unchanged and metadata is empty.
+    """
+    if not content:
+        return {}, ""
+
+    stripped = content.lstrip("\ufeff")
+    if not stripped.startswith("---"):
+        return {}, stripped
+
+    lines = stripped.splitlines()
+    if len(lines) < 3:
+        return {}, stripped
+
+    if lines[0].strip() != "---":
+        return {}, stripped
+
+    end_index = None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            end_index = idx
+            break
+
+    if end_index is None:
+        return {}, stripped
+
+    metadata: dict[str, str] = {}
+    for raw_line in lines[1:end_index]:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        field_name = key.strip().lower()
+        field_value = value.strip().strip('"\'')
+        if field_name:
+            metadata[field_name] = field_value
+
+    body = "\n".join(lines[end_index + 1 :]).lstrip("\n")
+    return metadata, body
+
+
 @dataclass
 class KnowledgeDocument:
     path: str
     title: str
     content: str
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -88,11 +133,18 @@ def load_knowledge_documents() -> list[KnowledgeDocument]:
         content = path.read_text(encoding="utf-8")
         if not content.strip():
             continue
+
+        metadata, body = parse_front_matter(content)
+        if not body.strip():
+            body = content
+
+        title = metadata.get("title") or path.stem.replace("_", " ").title()
         documents.append(
             KnowledgeDocument(
                 path=str(path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
-                title=path.stem.replace("_", " ").title(),
-                content=content,
+                title=title,
+                content=body,
+                metadata={key: value for key, value in metadata.items()},
             )
         )
     return documents
@@ -113,7 +165,13 @@ class LocalKnowledgeRetriever:
         "wheat", "rice", "residue", "seedbed", "sowing", "irrigation",
         "soil", "nutrient", "management", "rotation", "moisture",
         "crop", "planting", "fertility", "yield", "chemical", "pesticide",
-        "fungicide", "herbicide"
+        "fungicide", "herbicide", "field", "agriculture", "farming",
+        "fertilizer", "variety", "disease", "weed", "rainfall", "salinity"
+    }
+
+    LOCATION_TOKENS = {
+        "punjab", "pakistan", "sahiwal", "province", "region", "district",
+        "village", "city", "country", "state", "area", "county"
     }
 
     @staticmethod
@@ -135,38 +193,75 @@ class LocalKnowledgeRetriever:
             content_lower = content.lower()
             title_lower = document.title.lower()
             path_lower = document.path.lower()
+            metadata_lower = {str(key).lower(): str(value).lower() for key, value in document.metadata.items()}
 
-            score = 0.0
+            base_score = 0.0
+            direct_title_matches = set()
+            direct_content_matches = set()
+            agricultural_query_terms = set()
+
             for token in query_tokens:
+                if token in self.LOCATION_TOKENS:
+                    continue
                 if token in title_lower:
-                    score += 6
+                    base_score += 6
+                    direct_title_matches.add(token)
                 if token in content_lower:
-                    score += 2
+                    base_score += 2
+                    direct_content_matches.add(token)
                 if token in content_lower and token in self.AGRONOMY_TERMS:
-                    score += 3
+                    base_score += 3
+                if token in self.AGRONOMY_TERMS:
+                    agricultural_query_terms.add(token)
 
             matched_agronomy = sum(1 for term in self.AGRONOMY_TERMS if term in query_tokens and term in content_lower)
             if matched_agronomy:
-                score += matched_agronomy * 4
+                base_score += matched_agronomy * 4
 
             if any(token in query_tokens for token in {"wheat", "rice", "maize", "cotton", "ricewheat"}):
                 if "/crops/" in path_lower:
-                    score += 5
+                    base_score += 5
                 if "/regions/" in path_lower:
-                    score -= 3
+                    base_score -= 2
 
             if "sahiwal" in query_tokens and "sahiwal" in content_lower:
-                score += 2
+                base_score += 2
 
             if "/regions/" in path_lower and not any(term in content_lower for term in ["residue", "seedbed", "sowing", "irrigation", "nutrient", "soil"]):
-                score -= 2
+                base_score -= 2
 
-            if score > 0:
+            non_location_query_terms = {token for token in query_tokens if token not in self.LOCATION_TOKENS}
+            meaningful_content = (
+                base_score >= 7
+                or len(direct_title_matches | direct_content_matches) >= 2
+                or matched_agronomy >= 1
+                or bool(agricultural_query_terms & non_location_query_terms)
+            )
+
+            if not meaningful_content:
+                continue
+
+            metadata_score = 0.0
+            for key, value in metadata_lower.items():
+                if not value:
+                    continue
+                metadata_tokens = self._tokenize(value)
+                metadata_matches = set(metadata_tokens) & non_location_query_terms
+                if metadata_matches:
+                    metadata_score += len(metadata_matches) * 2
+                if key in {"crop", "province", "region", "district"} and value in content_lower:
+                    metadata_score += 1
+
+            if metadata_score:
+                metadata_boost = min(metadata_score, 3.0)
+                base_score += metadata_boost
+
+            if base_score > 0:
                 item = EvidenceItem(
                     source=document.path,
                     title=document.title,
                     content=content,
-                    score=float(score),
+                    score=float(base_score),
                 )
                 item.quality = assess_evidence_quality(item)
                 scored.append(item)

@@ -1,4 +1,14 @@
-﻿# Punjab, Pakistan — Agricultural Context
+﻿---
+title: Punjab, Pakistan
+crop: wheat
+region: Pakistan
+province: Punjab
+topic: regional_context
+source_type: agricultural_context
+evidence_quality: moderate
+---
+
+# Punjab, Pakistan — Agricultural Context
 ## Region
 Punjab is a major agricultural region of Pakistan with diverse climatic,
 soil, irrigation, and cropping conditions.

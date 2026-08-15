@@ -564,20 +564,27 @@ Important rules:
 def _contains_advice_language(text: str) -> bool:
     """Return True when the text is recommending an action to obtain/measure/check information."""
     advice_patterns = [
-        r"\b(use|get|obtain|check|measure|monitor|follow|review|consult|consider|if you have|when you have|if there is|if you can|based on)\s+(a\s+)?(soil\s+test|soil-test|soil\s+moisture|weather\s+forecast|recent\s+soil-test\s+results|soil\s+analysis|rainfall|temperature|moisture)\b",
-        r"\b(use|check|measure|monitor|follow|review|consult)\s+(soil|weather|moisture|rainfall|forecast)\b",
+        r"\b(use|get|obtain|check|measure|monitor|follow|review|consult|consider|if you have|when you have|if there is|if you can|based on|ensure|maintain|improve|manage|support|keep|avoid)\s+(a\s+)?(soil\s+test|soil-test|soil\s+moisture|weather\s+forecast|recent\s+soil-test\s+results|soil\s+analysis|rainfall|temperature|moisture)\b",
+        r"\b(use|check|measure|monitor|follow|review|consult|ensure|maintain|manage|support|improve|keep|avoid)\s+(soil|weather|moisture|rainfall|forecast)\b",
         r"\bif\s+you\s+have\s+(a\s+)?(soil\s+test|soil-test|recent\s+soil\s+test|soil\s+moisture|weather\s+forecast)\b",
+        r"\b(ensure|maintain|manage|improve|support|check|monitor|use|keep|avoid)\s+(adequate|sufficient|good|proper)\s+(soil\s+moisture|soil\s+structure|seed-to-soil\s+contact|residue\s+management)\b",
     ]
     return any(re.search(pattern, text) for pattern in advice_patterns)
 
 
 def _contains_asserted_measurement_claim(text: str) -> bool:
-    """Return True when the text asserts a specific measurement/condition as fact."""
+    """Return True only for unsupported factual assertions about current conditions or measurements."""
+    if not text:
+        return False
+
+    if _contains_advice_language(text):
+        return False
+
     claim_patterns = [
         r"\b(your|the)\s+(soil\s+test|soil\s+analysis|soil\s+sample)\s+(shows|indicates|confirms|suggests|proves|demonstrates)\b",
-        r"\b(your|the)\s+(field|soil|soil\s+moisture)\s+(has|contains|is|shows|indicates|confirms|suggests|proves|demonstrates)\b",
-        r"\b(soil\s+moisture|soil\s+ph|soil\s+nitrogen|soil\s+phosphorus|soil\s+potassium|soil\s+salinity|rainfall|temperature|humidity|wind)\s+(is|was|were|will\s+be|has\s+been|shows|indicates|confirms|suggests|proves)\b",
-        r"\b(rainfall|temperature|humidity|wind)\s+(this\s+week|today|tomorrow|in\s+\w+|for\s+the\s+week)\s+(was|is|will\s+be)\b",
+        r"\b(your|the)\s+(field|soil|soil\s+moisture|soil\s+ph|soil\s+nitrogen|soil\s+phosphorus|soil\s+potassium|soil\s+salinity)\s+(has|contains|is|shows|indicates|confirms|suggests|proves|demonstrates)\b",
+        r"\b(soil\s+moisture|soil\s+ph|soil\s+nitrogen|soil\s+phosphorus|soil\s+potassium|soil\s+salinity|rainfall|temperature|humidity|wind)\s+(is|was|were|will\s+be|has\s+been|shows|indicates|confirms|suggests|proves|demonstrates)\b",
+        r"\b(rainfall|temperature|humidity|wind)\s+(this\s+week|today|tomorrow|in\s+\w+|for\s+the\s+week)\s+(was|is|will\s+be|has\s+been)\b",
         r"\b(your|the)\s+(field|soil)\s+(has|contains)\s+(adequate|deficient|low|high|sufficient|excess|insufficient)\b",
     ]
     return any(re.search(pattern, text) for pattern in claim_patterns)
