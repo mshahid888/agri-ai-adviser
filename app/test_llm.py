@@ -1,0 +1,1 @@
+from openai import OpenAI; client = OpenAI(base_url="http://localhost:20128/v1", api_key="test"); response = client.chat.completions.create(model="gemini/gemini-3-flash-preview", messages=[{"role":"user","content":"Explain wheat sowing in Punjab, Pakistan, in one short sentence."}]); print("\n===== AI RESPONSE ====="); print(response.choices[0].message.content)
