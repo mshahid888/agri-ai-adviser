@@ -11,26 +11,89 @@ from app.farmer_context import FarmerContext
 from app.knowledge import EvidenceItem, EvidenceQuality, LocalKnowledgeRetriever
 
 SYSTEM_PROMPT = """
-You are an evidence-grounded agricultural adviser.
+You are an evidence-grounded agricultural adviser providing safe, practical advice to farmers.
 
-Use farmer-provided information as FACTS.
-Use retrieved agricultural knowledge as EVIDENCE.
-Use your reasoning only as MODEL REASONING.
-Keep these categories separate.
+Your core responsibility:
+- Provide only advice supported by farmer facts or retrieved evidence.
+- Never invent local agricultural facts, soil tests, weather, or product information.
+- Distinguish between general agricultural knowledge and location-specific recommendations.
+- Be conservative with high-risk claims (pesticides, fertilizers, disease diagnosis, varieties).
 
-Rules:
-- Farmer information is a fact only when stated by the farmer.
-- Retrieved knowledge is evidence only when it appears in the retrieved text.
-- Do not claim that information came from a source unless that source was actually retrieved.
-- Do not invent weather, soil-test results, field measurements, government recommendations, product names, pesticide labels, fertilizer rates, crop varieties, or disease diagnoses.
-- For chemical inputs, tell the farmer to follow the locally registered product label and applicable regulations.
-- If evidence is insufficient, say that evidence is insufficient.
-- If important information is missing, ask the farmer for it.
-- Distinguish general agricultural guidance from location-specific advice.
-- The answer should clearly separate: Farmer situation, Evidence available, Assessment, Practical recommendations, Missing information, Safety/uncertainty notes.
-- Do not provide exact fertilizer or pesticide rates unless retrieved evidence specifically supports them.
-- If a recommendation is high-risk or highly specific, it should carry a caution and require local confirmation.
-Your goal is safe, evidence-grounded advice, not confident guessing.
+Categories of information:
+
+FARMER FACTS:
+These are facts explicitly provided by the farmer about their situation.
+Treat these as reliable starting points.
+
+RETRIEVED EVIDENCE:
+This is knowledge retrieved from the local agricultural knowledge base.
+It is evidence that can be trusted to be factually grounded.
+
+MODEL REASONING:
+Your interpretation and reasoning based on facts and evidence.
+Use this to connect recommendations to evidence, not as a source of new facts.
+
+Critical rules for safety:
+
+1. FERTILIZER RATES:
+   - Do not specify exact fertilizer quantities (kg, bags, ml) unless the retrieved evidence explicitly supports it.
+   - Instead: "Fertilizer rates should be based on soil testing and local agronomic recommendations."
+
+2. PESTICIDES & SPRAYS:
+   - Do not specify exact pesticide products, doses, or application rates.
+   - Always reference the officially registered product label and local regulations.
+   - Example: "Follow the instructions on the locally registered product label."
+
+3. DISEASE DIAGNOSIS:
+   - Do not diagnose disease without clear symptom evidence and farmer description.
+   - When uncertain, ask clarifying questions about symptoms, plant parts affected, and spread.
+   - Example: "Based on the symptoms you describe, this could be... but confirm with a local agricultural expert."
+
+4. VARIETY SELECTION:
+   - Do not recommend a specific crop variety without verified local evidence that it is suitable.
+   - Instead: "Consult local agricultural extension for varieties proven in your area."
+
+5. WEATHER & SOIL TESTS:
+   - Do not refer to weather predictions, soil test results, or field measurements that were not provided by the farmer.
+   - If needed, ask the farmer to provide this information.
+
+6. LOCATION-SPECIFIC CLAIMS:
+   - Do not make claims that imply you have local knowledge beyond what was provided or retrieved.
+
+Your response format should include:
+
+1. FARMER SITUATION
+   Briefly summarize what the farmer told you.
+
+2. ASSESSMENT
+   What you understand about their problem based on facts and evidence.
+
+3. RECOMMENDATIONS
+   Practical advice they can act on now.
+   - If general guidance: provide it directly if evidence supports it.
+   - If high-risk: be conservative, reference evidence, ask for missing info.
+
+4. WHY
+   Connect your recommendations to evidence and reasoning.
+
+5. INFORMATION STILL NEEDED
+   Ask only the most critical questions.
+   - Avoid asking for information that won't materially change the answer.
+
+6. SAFETY NOTES
+   Highlight any uncertainties, verification needs, or when they should consult a local expert.
+
+7. EVIDENCE SOURCES
+   List the files or evidence you used.
+   - Only mention sources that were actually provided.
+
+8. CONFIDENCE
+   State your confidence (Low / Moderate / High).
+   - Low: high-risk claim, insufficient evidence, or significant uncertainties.
+   - Moderate: general guidance, some evidence, manageable uncertainties.
+   - High: strong evidence, low-risk claim, farmer provided needed info.
+
+Always prioritize farmer safety over providing a confident-sounding answer.
 """
 
 
@@ -96,6 +159,69 @@ class AgriculturalDecisionPlan:
     risk_level: RiskLevel = RiskLevel.LOW
     recommended_actions: list[str] = field(default_factory=list)
     questions_for_farmer: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AgriculturalResponse:
+    """Structured response for farmer-facing agricultural advice."""
+    situation: str
+    assessment: str
+    recommendations: list[str]
+    reasons: str
+    missing_information: list[str]
+    warnings: list[str]
+    confidence: str
+    evidence_sources: list[str]
+    next_questions: list[str]
+    intent: AgriculturalIntent
+    risk_level: RiskLevel
+    safety_validated: bool = True
+    validation_issues: list[str] = field(default_factory=list)
+
+    def to_farmer_text(self) -> str:
+        """Convert structured response to farmer-friendly text."""
+        lines = []
+        
+        lines.append("Your situation:")
+        lines.append(self.situation)
+        lines.append("")
+        
+        lines.append("What I recommend now:")
+        for rec in self.recommendations:
+            lines.append(f"- {rec}")
+        lines.append("")
+        
+        lines.append("Why:")
+        lines.append(self.reasons)
+        lines.append("")
+        
+        if self.missing_information:
+            lines.append("Information still needed:")
+            for info in self.missing_information:
+                lines.append(f"- {info}")
+            lines.append("")
+        
+        if self.warnings:
+            lines.append("Safety notes:")
+            for warning in self.warnings:
+                lines.append(f"- {warning}")
+            lines.append("")
+        
+        if self.evidence_sources:
+            lines.append("Evidence sources:")
+            for source in self.evidence_sources:
+                lines.append(f"- {source}")
+            lines.append("")
+        
+        lines.append(f"Confidence: {self.confidence}")
+        
+        if self.next_questions:
+            lines.append("")
+            lines.append("You could also ask about:")
+            for q in self.next_questions:
+                lines.append(f"- {q}")
+        
+        return "\n".join(lines)
 
 
 def classify_agricultural_intent(question: str | None, context: FarmerContext | None = None) -> AgriculturalIntent:
@@ -435,30 +561,115 @@ Important rules:
 """
 
 
-def validate_response_text(response_text: str) -> str:
+def _contains_advice_language(text: str) -> bool:
+    """Return True when the text is recommending an action to obtain/measure/check information."""
+    advice_patterns = [
+        r"\b(use|get|obtain|check|measure|monitor|follow|review|consult|consider|if you have|when you have|if there is|if you can|based on)\s+(a\s+)?(soil\s+test|soil-test|soil\s+moisture|weather\s+forecast|recent\s+soil-test\s+results|soil\s+analysis|rainfall|temperature|moisture)\b",
+        r"\b(use|check|measure|monitor|follow|review|consult)\s+(soil|weather|moisture|rainfall|forecast)\b",
+        r"\bif\s+you\s+have\s+(a\s+)?(soil\s+test|soil-test|recent\s+soil\s+test|soil\s+moisture|weather\s+forecast)\b",
+    ]
+    return any(re.search(pattern, text) for pattern in advice_patterns)
+
+
+def _contains_asserted_measurement_claim(text: str) -> bool:
+    """Return True when the text asserts a specific measurement/condition as fact."""
+    claim_patterns = [
+        r"\b(your|the)\s+(soil\s+test|soil\s+analysis|soil\s+sample)\s+(shows|indicates|confirms|suggests|proves|demonstrates)\b",
+        r"\b(your|the)\s+(field|soil|soil\s+moisture)\s+(has|contains|is|shows|indicates|confirms|suggests|proves|demonstrates)\b",
+        r"\b(soil\s+moisture|soil\s+ph|soil\s+nitrogen|soil\s+phosphorus|soil\s+potassium|soil\s+salinity|rainfall|temperature|humidity|wind)\s+(is|was|were|will\s+be|has\s+been|shows|indicates|confirms|suggests|proves)\b",
+        r"\b(rainfall|temperature|humidity|wind)\s+(this\s+week|today|tomorrow|in\s+\w+|for\s+the\s+week)\s+(was|is|will\s+be)\b",
+        r"\b(your|the)\s+(field|soil)\s+(has|contains)\s+(adequate|deficient|low|high|sufficient|excess|insufficient)\b",
+    ]
+    return any(re.search(pattern, text) for pattern in claim_patterns)
+
+
+def validate_response_detailed(response_text: str) -> tuple[str, bool, list[str]]:
+    """Validate response for unsupported claims.
+
+    Returns:
+        (validated_text, is_safe, issues)
+        - validated_text: cleaned response or warning
+        - is_safe: whether response passed safety checks
+        - issues: list of detected safety issues
+    """
     cleaned = response_text.strip()
     if not cleaned:
-        return "No response received from the model."
+        return "No response received from the model.", False, ["Empty response"]
 
     lower = cleaned.lower()
-    high_risk_patterns = [
-        r"\b\d+\s*(bags?|kg|kg/acre|ml|litres?|liters?)\b",
-        r"\bapply .*\bper acre\b",
-        r"\bthis is .*disease\b",
-        r"\bvariety .* is recommended\b",
-        r"\buse .*pesticide\b",
-        "exactly which pesticide",
-        "exact fertilizer",
+    issues = []
+
+    # Pattern 1: Exact fertilizer quantities
+    fertilizer_patterns = [
+        r"\b(\d+(?:\.\d+)?)\s*(kg|bags?|tons?|quintals?|lbs?)",
+        r"\b(per\s+acre|/acre|per\s+hectare|/hectare).*?(\d+(?:\.\d+)?)\s*(kg|bags?)",
+        r"(urea|dap|map|ssa|fert).*?(\d+(?:\.\d+)?)\s*(kg|bags?)",
     ]
-    matches = [pattern for pattern in high_risk_patterns if re.search(pattern, lower)]
 
-    if matches:
-        return (
-            "Safety warning: the model output contains a potentially unsupported high-risk recommendation. "
-            "The system should treat this as needing local verification and should not present it as confirmed advice."
+    for pattern in fertilizer_patterns:
+        if re.search(pattern, lower):
+            issues.append("Contains exact fertilizer quantity without evidence attribution")
+            break
+
+    # Pattern 2: Exact pesticide/spray rates
+    pesticide_patterns = [
+        r"\b(\d+(?:\.\d+)?)\s*(ml|cc|liter|l)/acre",
+        r"spray.*?(\d+(?:\.\d+)?)\s*(ml|cc|liter)",
+        r"pesticide.*?(\d+(?:\.\d+)?)\s*(ml|cc|liter|dilution)",
+        r"dose.*?(\d+(?:\.\d+)?)\s*(ml|cc|liter)",
+    ]
+
+    for pattern in pesticide_patterns:
+        if re.search(pattern, lower):
+            issues.append("Contains exact pesticide dosage without evidence attribution")
+            break
+
+    if re.search(r"\b(spray|apply|use).*?\b(roundup|glyphosate|carbofuran|dimethoate|imidacloprid|thiamethoxam)\b", lower):
+        issues.append("Recommends specific pesticide product without evidence attribution")
+
+    strong_diagnosis_patterns = [
+        r"\bthis is.*?disease\b",
+        r"\byour.*?has\s+(yellow\s+)?rust\b",
+        r"\bdefinitely.*?disease\b",
+        r"\bclearly.*?(disease|infection)\b",
+    ]
+
+    for pattern in strong_diagnosis_patterns:
+        if re.search(pattern, lower):
+            issues.append("Contains strong disease diagnosis without supporting evidence")
+            break
+
+    if re.search(r"\b(plant|sow|use)\s+(akbar|fsd|sarc|inqlab|aas|chakwal|pb)\s*-?\s*\d+\b", lower):
+        issues.append("Recommends specific crop variety without verified local evidence")
+
+    if _contains_asserted_measurement_claim(lower) and not _contains_advice_language(lower):
+        issues.append("Makes unsupported claims about soil, weather, moisture, or other measurements without evidence")
+
+    if re.search(r"\b(government|ministry|department|university|research|study|paper|report)\s+(recommends|states|says|found)\b", lower):
+        issues.append("References external authority without citing retrieved evidence")
+
+    is_safe = len(issues) == 0
+
+    if not is_safe:
+        warning = (
+            "Safety warning: The response contains potentially unsupported claims:\n"
+            + "\n".join(f"- {issue}" for issue in issues)
+            + "\n\nThe system cannot present this as confirmed advice without local expert verification."
         )
+        return warning, False, issues
 
-    return cleaned
+    return cleaned, True, issues
+
+
+def validate_response_text(response_text: str) -> str:
+    """Backward-compatible public API: return only the validated response text."""
+    validated_text, _, _ = validate_response_detailed(response_text)
+    return validated_text
+
+
+def validate_response_text_simple(response_text: str) -> str:
+    """Legacy validation function for backward compatibility."""
+    return validate_response_text(response_text)
 
 
 def ask_adviser(context: FarmerContext, farmer_question: str | None = None) -> str:
@@ -485,10 +696,8 @@ def ask_adviser(context: FarmerContext, farmer_question: str | None = None) -> s
         ],
     )
     answer = response.choices[0].message.content
-    validated = validate_response_text(answer)
-    if validated.startswith("Safety warning:"):
-        return validated
-    return answer
+    validated, _, _ = validate_response_detailed(answer)
+    return validated
 
 
 if __name__ == "__main__":
