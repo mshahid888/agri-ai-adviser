@@ -238,7 +238,7 @@ def classify_agricultural_intent(question: str | None, context: FarmerContext | 
         return AgriculturalIntent.NUTRIENT_MANAGEMENT
     if any(word in text for word in ["irrigation", "water", "moisture", "when to irrigate"]):
         return AgriculturalIntent.IRRIGATION
-    if any(word in text for word in ["pesticide", "spray", "herbicide", "fungicide", "yellow leaves", "disease", "wilt", "rust", "leaf spot", "powdery mildew"]):
+    if any(word in text for word in ["pesticide", "spray", "herbicide", "fungicide", "yellow leaves", "yellow", "disease", "wilt", "rust", "leaf spot", "powdery mildew", "yellowing", "chlorosis"]):
         return AgriculturalIntent.PEST_OR_DISEASE
     if any(word in text for word in ["weed", "weeds", "herbicide", "weed control"]):
         return AgriculturalIntent.WEED_MANAGEMENT
