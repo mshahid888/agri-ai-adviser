@@ -6,6 +6,14 @@ province: Punjab
 topic: regional_context
 source_type: agricultural_context
 evidence_quality: moderate
+version: "1.1"
+last_updated: "2024-06-01"
+status: "active"
+reviewed_by: "regional agronomy review"
+review_date: "2024-06-01"
+author: "Regional Advisory Unit"
+organization: "Punjab Provincial Advisory"
+notes: "Regional context for Punjab agricultural recommendations."
 ---
 
 # Punjab, Pakistan — Agricultural Context

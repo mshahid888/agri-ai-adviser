@@ -5,3 +5,5 @@ This directory is reserved for metadata-oriented topic notes and local knowledge
 The current architecture keeps retrieval deterministic and local. Topic metadata is used to support better filtering and relevance scoring without introducing vector databases, embeddings, external APIs, or autonomous agent behaviors.
 
 Files in this directory are optional and may be used to organize local knowledge by theme when needed.
+
+For Milestone 7.2, provenance, version metadata, and conflict awareness are treated as advisory evidence attributes. They do not create relevance on their own and do not replace the existing content-first retrieval gate.

@@ -119,6 +119,134 @@ def test_missing_metadata_does_not_crash_retrieval():
     assert isinstance(results, list)
 
 
+def test_provenance_is_parsed_from_front_matter():
+    markdown = '''---
+title: Wheat
+crop: wheat
+region: Pakistan
+version: "1.2"
+last_updated: "2024-06-01"
+status: "active"
+reviewed_by: "local agronomy review"
+review_date: "2024-06-01"
+author: "Agricultural Knowledge Team"
+organization: "Local Extension Advisory"
+notes: "General agronomic guidance"
+---
+
+# Wheat
+
+Wheat is a Rabi crop.
+'''
+    metadata, _ = parse_front_matter(markdown)
+    doc = KnowledgeDocument(
+        path="knowledge/crops/wheat.md",
+        title="Wheat",
+        content="Wheat is a Rabi crop.",
+        metadata=metadata,
+    )
+
+    assert doc.metadata["version"] == "1.2"
+    assert doc.metadata["last_updated"] == "2024-06-01"
+    assert doc.metadata["status"] == "active"
+
+
+def test_missing_provenance_metadata_remains_backward_compatible():
+    doc = KnowledgeDocument(
+        path="knowledge/crops/wheat.md",
+        title="Wheat",
+        content="Wheat content",
+        metadata={"crop": "wheat"},
+    )
+
+    assert doc.provenance is None
+    assert doc.version_info is None
+
+
+def test_version_and_freshness_metadata_are_loaded():
+    documents = load_knowledge_documents()
+    wheat_doc = next(doc for doc in documents if doc.path.endswith("wheat.md"))
+
+    assert wheat_doc.version_info is not None
+    assert wheat_doc.version_info.version == "1.2"
+    assert wheat_doc.version_info.status == "active"
+    assert wheat_doc.provenance is not None
+    assert wheat_doc.provenance.source_type == "agricultural_guidance"
+
+
+def test_supersession_is_detected_as_advisory_conflict():
+    from app.knowledge import detect_conflicts, EvidenceItem, EvidenceQuality
+
+    older = EvidenceItem(
+        source="knowledge/crops/wheat_old.md",
+        title="Wheat",
+        content="Rice residue should be burned before sowing.",
+        score=8.0,
+        quality=EvidenceQuality.MODERATE,
+        document_version="1.1",
+    )
+    newer = EvidenceItem(
+        source="knowledge/crops/wheat.md",
+        title="Wheat",
+        content="Rice residue should not be burned before sowing.",
+        score=9.0,
+        quality=EvidenceQuality.MODERATE,
+        document_version="1.2",
+    )
+
+    conflicts = detect_conflicts([older, newer])
+    assert conflicts
+    assert any(record.conflict_type == "direct_contradiction" for record in conflicts)
+
+
+def test_conflict_remains_non_blocking():
+    from app.knowledge import detect_conflicts, EvidenceItem, EvidenceQuality
+
+    left = EvidenceItem(
+        source="knowledge/crops/wheat.md",
+        title="Wheat",
+        content="Rice residue should not be burned before sowing.",
+        score=9.0,
+        quality=EvidenceQuality.MODERATE,
+        document_version="1.2",
+    )
+    right = EvidenceItem(
+        source="knowledge/crops/wheat_old.md",
+        title="Wheat",
+        content="Rice residue can be burned before sowing.",
+        score=8.0,
+        quality=EvidenceQuality.MODERATE,
+        document_version="1.1",
+    )
+
+    conflicts = detect_conflicts([left, right])
+    assert conflicts
+    assert len(conflicts) >= 1
+
+
+def test_provenance_cannot_trigger_relevance():
+    retriever = LocalKnowledgeRetriever()
+    results = retriever.retrieve("Bicycle repair in Punjab")
+
+    assert results == []
+
+
+def test_freshness_metadata_cannot_trigger_relevance():
+    retriever = LocalKnowledgeRetriever()
+    results = retriever.retrieve("Bike repair with version 1.2")
+
+    assert results == []
+
+
+def test_metadata_boost_still_works_for_relevant_agricultural_queries():
+    retriever = LocalKnowledgeRetriever()
+    results = retriever.retrieve("Wheat fertilizer management in Punjab")
+
+    assert results
+    assert any(item.source.endswith("wheat.md") for item in results)
+    assert any(item.source.endswith("punjab_pakistan.md") for item in results)
+
+
 def test_general_agronomic_guidance_is_not_flagged_as_unsupported_measurement():
     from app.adviser import validate_response_detailed
 

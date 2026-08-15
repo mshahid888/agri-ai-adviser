@@ -522,13 +522,35 @@ def format_evidence(evidence: list[EvidenceItem | dict]) -> str:
             score = item.score
             quality = item.quality.value
 
-        sections.append(
-            f"SOURCE: {source}\n"
-            f"TITLE: {title}\n"
-            f"QUALITY: {quality}\n"
-            f"RELEVANCE SCORE: {score}\n"
-            f"{content.strip()}"
-        )
+        provenance = None
+        version = None
+        source_quality = None
+        if isinstance(item, dict):
+            provenance = item.get("provenance")
+            version = item.get("document_version")
+            source_quality = item.get("source_quality")
+        else:
+            provenance = item.provenance
+            version = item.document_version
+            source_quality = item.source_quality.value if item.source_quality else None
+
+        detail_lines = [
+            f"SOURCE: {source}",
+            f"TITLE: {title}",
+            f"QUALITY: {quality}",
+            f"RELEVANCE SCORE: {score}",
+        ]
+        if provenance:
+            detail_lines.append(f"SOURCE TYPE: {provenance.source_type or 'unknown'}")
+            detail_lines.append(f"SOURCE NAME: {provenance.source_name or 'unknown'}")
+            if provenance.organization:
+                detail_lines.append(f"ORGANIZATION: {provenance.organization}")
+        if version:
+            detail_lines.append(f"VERSION: {version}")
+        if source_quality:
+            detail_lines.append(f"SOURCE QUALITY: {source_quality}")
+        detail_lines.append(content.strip())
+        sections.append("\n".join(detail_lines))
     return "\n\n".join(sections)
 
 

@@ -5,6 +5,15 @@ region: Pakistan
 topic: crop_management
 source_type: agricultural_guidance
 evidence_quality: moderate
+version: "1.2"
+last_updated: "2024-06-01"
+status: "active"
+supersedes: "1.1"
+reviewed_by: "local agronomy review"
+review_date: "2024-06-01"
+author: "Agricultural Knowledge Team"
+organization: "Local Extension Advisory"
+notes: "General agronomic guidance for wheat production and rice-wheat system management."
 ---
 
 # Wheat — General Agricultural Knowledge
