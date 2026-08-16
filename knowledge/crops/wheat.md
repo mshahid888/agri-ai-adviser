@@ -1,5 +1,6 @@
 ﻿---
 title: Wheat
+content_status: placeholder
 crop: wheat
 region: Pakistan
 topic: crop_management

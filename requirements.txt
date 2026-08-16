@@ -1,0 +1,7 @@
+# Core runtime dependencies for the Agri-AI Adviser
+openai>=1.0.0
+pypdf>=4.0.0
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=8.0.0

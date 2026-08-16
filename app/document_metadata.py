@@ -31,6 +31,7 @@ class DocumentMetadata:
     last_updated: str = ""
     status: str = "ingested"
     notes: str = ""
+    organization: str = ""
 
 
 def build_document_metadata(
@@ -49,6 +50,10 @@ def build_document_metadata(
     if source is None:
         raise ValueError(f"Unknown source_id: {source_id}")
 
+    # For metadata schema compliance, ensure we have an organization and a version (default to "1.0" if empty)
+    version = source.version or "1.0"
+    organization = source.organization or "Unknown Organization"
+
     metadata = DocumentMetadata(
         source_id=source_id,
         document_id=document_id,
@@ -61,10 +66,11 @@ def build_document_metadata(
         topic=source.topic,
         source_type=source.source_type,
         evidence_quality=source.evidence_quality,
-        version=source.version,
+        version=version,
         last_updated=source.last_updated,
         status="ingested",
         notes=source.notes,
+        organization=organization,
     )
 
     for key, value in overrides.items():

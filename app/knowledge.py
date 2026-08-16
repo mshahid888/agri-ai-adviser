@@ -155,11 +155,13 @@ class KnowledgeDocument:
     version_info: KnowledgeVersionInfo | None = None
 
 
+
 @dataclass
 class EvidenceItem:
     source: str
     title: str
     content: str
+    document_id: str | None = None
     score: float = 0.0
     quality: EvidenceQuality = EvidenceQuality.GENERAL
     section: str | None = None
@@ -171,6 +173,7 @@ class EvidenceItem:
     @property
     def path(self) -> str:
         return self.source
+
 
 
 @dataclass
@@ -523,6 +526,30 @@ class LocalKnowledgeRetriever:
             if "/regions/" in path_lower and not any(term in content_lower for term in ["residue", "seedbed", "sowing", "irrigation", "nutrient", "soil"]):
                 base_score -= 2
 
+            # M11 Applicability: District > Province > Region
+            if metadata_lower.get("district") in query_tokens:
+                base_score += 5
+            elif metadata_lower.get("province") in query_tokens:
+                base_score += 3
+            elif metadata_lower.get("region") in query_tokens:
+                base_score += 1
+
+            # M11 Applicability: Crop-specific
+            if metadata_lower.get("crop") in query_tokens:
+                base_score += 3
+
+            # M11 Farming-stage relevance (heuristic)
+            stage = metadata_lower.get("farming_stage")
+            if stage and any(token in stage.replace("_", " ") for token in query_tokens):
+                base_score += 4
+
+            # M11 Placeholder handling
+            if metadata_lower.get("content_status") == "placeholder":
+                base_score -= 5
+                # Gate: placeholder must still reach general threshold to be evidence
+                if base_score < 3:
+                    continue
+
             non_location_query_terms = {token for token in query_tokens if token not in self.LOCATION_TOKENS}
             meaningful_content = (
                 base_score >= 7
@@ -554,6 +581,7 @@ class LocalKnowledgeRetriever:
                     source=document.path,
                     title=document.title,
                     content=content,
+                    document_id=document.metadata.get("document_id"),
                     score=float(base_score),
                     provenance=document.provenance,
                     document_version=document.version_info.version if document.version_info else (document.provenance.document_version if document.provenance else None),
@@ -571,7 +599,36 @@ class LocalKnowledgeRetriever:
                     confidence="medium" if item.score >= 7 else "low",
                     is_primary_source=True,
                 )
+                # Filter out superseded status
+                if metadata_lower.get("status") in {"superseded", "archived"}:
+                    continue
+
                 scored.append(item)
+
+        # M11 Version/supersession handling: keep newer versions of same document_id
+        if scored:
+            final_scored = []
+            doc_id_groups: dict[str, list[EvidenceItem]] = {}
+            no_id_items = []
+            for item in scored:
+                if item.document_id:
+                    doc_id_groups.setdefault(item.document_id, []).append(item)
+                else:
+                    no_id_items.append(item)
+            
+            for doc_id, group in doc_id_groups.items():
+                if len(group) == 1:
+                    final_scored.append(group[0])
+                else:
+                    # Keep newest version
+                    newest = group[0]
+                    for other in group[1:]:
+                        if _compare_versions(other.document_version, newest.document_version) > 0:
+                            newest = other
+                    final_scored.append(newest)
+            
+            final_scored.extend(no_id_items)
+            scored = final_scored
 
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[:top_k]
@@ -615,8 +672,22 @@ def validate_recommendation(recommendation: Recommendation) -> Recommendation:
         recommendation.evidence_quality = EvidenceQuality.INSUFFICIENT
         return recommendation
 
+    # Normalize evidence for consistent processing
+    normalized_evidence = []
+    for item in recommendation.supporting_evidence:
+        if isinstance(item, dict):
+            normalized_evidence.append({
+                "content": item.get("content", ""),
+                "quality": _coerce_evidence_quality(item.get("quality"))
+            })
+        else:
+            normalized_evidence.append({
+                "content": item.content,
+                "quality": assess_evidence_quality(item)
+            })
+
     text = recommendation.text.lower()
-    source_text = "\n".join(item.content.lower() for item in recommendation.supporting_evidence)
+    source_text = "\n".join(e["content"].lower() for e in normalized_evidence)
 
     if recommendation.claim_type in {ClaimType.FERTILIZER, ClaimType.PESTICIDE, ClaimType.VARIETY, ClaimType.DISEASE}:
         if any(pattern in text for pattern in ["exactly", "per acre", "bags of", "ml/acre", "dose", "variety", "diagnose", "this is disease"]):
@@ -651,18 +722,18 @@ def validate_recommendation(recommendation: Recommendation) -> Recommendation:
         recommendation.evidence_quality = EvidenceQuality.INSUFFICIENT
         return recommendation
 
-    if recommendation.supporting_evidence:
-        recommendation.evidence_quality = max(
-            [assess_evidence_quality(item) for item in recommendation.supporting_evidence],
-            key=lambda q: [
-                EvidenceQuality.INSUFFICIENT,
-                EvidenceQuality.GENERAL,
-                EvidenceQuality.MODERATE,
-                EvidenceQuality.STRONG,
-            ].index(q),
-        )
-        recommendation.needs_verification = recommendation.evidence_quality in {EvidenceQuality.INSUFFICIENT, EvidenceQuality.GENERAL}
-        recommendation.confidence = "medium" if recommendation.evidence_quality in {EvidenceQuality.GENERAL, EvidenceQuality.MODERATE} else "low"
+    # Use normalized_evidence for consistent quality assessment
+    recommendation.evidence_quality = max(
+        [e["quality"] for e in normalized_evidence],
+        key=lambda q: [
+            EvidenceQuality.INSUFFICIENT,
+            EvidenceQuality.GENERAL,
+            EvidenceQuality.MODERATE,
+            EvidenceQuality.STRONG,
+        ].index(q),
+    )
+    recommendation.needs_verification = recommendation.evidence_quality in {EvidenceQuality.INSUFFICIENT, EvidenceQuality.GENERAL}
+    recommendation.confidence = "medium" if recommendation.evidence_quality in {EvidenceQuality.GENERAL, EvidenceQuality.MODERATE} else "low"
 
     return recommendation
 

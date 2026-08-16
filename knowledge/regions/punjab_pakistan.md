@@ -1,5 +1,6 @@
 ﻿---
 title: Punjab, Pakistan
+content_status: placeholder
 crop: wheat
 region: Pakistan
 province: Punjab
