@@ -11,9 +11,10 @@ from app.adviser import (
     RiskLevel,
     ask_adviser,
     build_decision_plan,
-    classify_agricultural_intent,
     validate_response_detailed,
 )
+from app.intent_classifier import intelligent_classify_intent
+from app.retrieval_planner import RetrievalPlanner
 from app.farmer_context import FarmerContext
 from app.knowledge import LocalKnowledgeRetriever, detect_conflicts
 
@@ -456,8 +457,16 @@ def ask_farmer(
 
     crop = normalized.crop or (context.crop if context else None) or "crop"
     farmer_question = normalized.farmer_question or question
-    intent = classify_agricultural_intent(farmer_question, context)
+    
+    classification = intelligent_classify_intent(farmer_question, context)
+    intent = classification.intent
+    
     risk = _determine_risk(intent, normalized)
+    
+    # Use classification confidence for retrieval planning if needed
+    if classification.confidence < 0.4:
+        # Lower confidence in intent, might need broader retrieval
+        pass
 
     missing_info = _evaluate_missing_information(normalized, intent)
     if not missing_info["answerable"]:
@@ -470,6 +479,7 @@ def ask_farmer(
         )
         return OrchestrationOutcome(is_clarification_required=True, clarification=clarification)
 
+    # Build case and plan
     case = AgriculturalCase(
         crop=normalized.crop,
         location=", ".join(part for part in [normalized.country, normalized.province, normalized.district] if part),
@@ -483,9 +493,17 @@ def ask_farmer(
         problem=normalized.problem,
         farmer_question=farmer_question,
     )
-    decision_plan = build_decision_plan(case, intent)
-    retrieval_query = decision_plan.retrieval_query or farmer_question
-    evidence = LocalKnowledgeRetriever().retrieve(retrieval_query, top_k=3)
+    
+    # Use planner
+    planner = RetrievalPlanner()
+    plan = planner.plan(farmer_question, classification, context)
+    
+    # Retrieval
+    retriever = LocalKnowledgeRetriever()
+    # Hybrid retrieval: heuristic + semantic boost via M12 implementation
+    evidence = retriever.retrieve(plan.query, top_k=plan.top_k)
+    
+    # Evidence validation
     evidence_bundle = _build_evidence_bundle(evidence)
 
     if not evidence_bundle.evidence_available:
@@ -498,6 +516,7 @@ def ask_farmer(
         )
         return OrchestrationOutcome(is_clarification_required=True, clarification=clarification)
 
+    decision_plan = build_decision_plan(case, intent)
     response = _maybe_call_llm_for_final_answer(farmer_question, context, normalized, evidence, decision_plan, intent, risk)
 
     if isinstance(response, str):

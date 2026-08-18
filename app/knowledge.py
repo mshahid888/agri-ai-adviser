@@ -543,6 +543,17 @@ class LocalKnowledgeRetriever:
             if stage and any(token in stage.replace("_", " ") for token in query_tokens):
                 base_score += 4
 
+            # M12: Hybrid semantic-heuristic retrieval
+            try:
+                from app.vector_index import VectorIndex
+                semantic_index = VectorIndex()
+                semantic_results = dict(semantic_index.search(query, top_k=10))
+                if document.path in semantic_results:
+                    # Boost by up to 5 points based on semantic similarity
+                    base_score += semantic_results[document.path] * 5
+            except Exception:
+                pass # Fail gracefully
+
             # M11 Placeholder handling
             if metadata_lower.get("content_status") == "placeholder":
                 base_score -= 5

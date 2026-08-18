@@ -3,5 +3,11 @@ openai>=1.0.0
 pypdf>=4.0.0
 python-dotenv>=1.0.0
 
+# M16 Production API
+fastapi>=0.100.0
+uvicorn>=0.20.0
+python-multipart>=0.0.5
+
 # Testing
 pytest>=8.0.0
+httpx>=0.24.0
