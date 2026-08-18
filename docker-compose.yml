@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
   agri-ai-api:
     build: .
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
-      - OMNIROUTE_BASE_URL=${OMNIROUTE_BASE_URL:-http://localhost:20128/v1}
+      - OMNIROUTE_BASE_URL=${OMNIROUTE_BASE_URL:-http://host.docker.internal:20128/v1}
       - OMNIROUTE_API_KEY=${OMNIROUTE_API_KEY}
       - AGRI_AI_MODEL=${AGRI_AI_MODEL:-gemini/gemini-3.1-flash-lite}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
-      - API_KEY=${API_KEY}
+      - API_KEY=${API_KEY:-}
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
